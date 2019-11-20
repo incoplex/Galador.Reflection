@@ -42,7 +42,8 @@ namespace Galador.Reflection.Utils
             parameters = method.GetParameters();
             this.method = method;
 #if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
-            fastMethod = EmitHelper.CreateMethodHandler(method);
+            if (EmitHelper.SupportsEmit)
+                fastMethod = EmitHelper.CreateMethodHandler(method);
 #endif
         }
 
@@ -70,7 +71,8 @@ namespace Galador.Reflection.Utils
             parameters = method.GetParameters();
             this.method = method;
 #if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
-            fastMethod = EmitHelper.CreateMethodHandler(method, doNotCreate);
+            if (EmitHelper.SupportsEmit)
+                fastMethod = EmitHelper.CreateMethodHandler(method, doNotCreate);
 #endif
         }
 
@@ -99,12 +101,12 @@ namespace Galador.Reflection.Utils
                 args = args2;
             }
 #if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
-            return fastMethod(target, args);
-#else
+            if (EmitHelper.SupportsEmit)
+                return fastMethod(target, args);
+#endif
             if (method is ConstructorInfo)
                 return ((ConstructorInfo)method).Invoke(args);
             return method.Invoke(target, args);
-#endif
         }
     }
 }
