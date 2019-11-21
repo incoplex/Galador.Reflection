@@ -67,10 +67,9 @@ namespace Galador.Reflection.Utils
             if (IsGenericMeta || IsAbstract)
                 return null;
 
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (fastCtor != null && EmitHelper.SupportsEmit)
                 return fastCtor();
-#endif
+
             if (emtpy_constructor != null)
                 return emtpy_constructor.Invoke(empty_params);
 
@@ -82,18 +81,15 @@ namespace Galador.Reflection.Utils
 
         FastMethod emtpy_constructor;
         object[] empty_params;
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
         Func<object> fastCtor;
-#endif
+
         void SetConstructor()
         {
             var ctor = Type.TryGetConstructors().OrderBy(x => x.GetParameters().Length).FirstOrDefault();
             if (ctor == null)
             {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
                 if (Type.IsValueType && EmitHelper.SupportsEmit)
                     fastCtor = EmitHelper.CreateParameterlessConstructorHandler(Type);
-#endif
                 return;
             }
 
@@ -180,10 +176,10 @@ namespace Galador.Reflection.Utils
             IsReference = !type.IsValueType;
             BaseType = GetType(Type.BaseType);
             IsMscorlib = IsFromMscorlib(type);
-            IsAbstract = type.IsAbstract || type.IsInterface;
+            IsAbstract = type.IsAbstract || type.IsInterface || ((type.Attributes & TypeAttributes.Abstract) != 0);
             IsGenericMeta = IsUndefined(type);
 
-            if (!type.IsArray && !type.IsEnum && !IsAbstract)
+            if (!type.IsArray && !type.IsEnum && !IsAbstract && !IsGenericMeta)
                 SetConstructor();
         }
 
@@ -338,8 +334,11 @@ namespace Galador.Reflection.Utils
                 CanSet = pi.SetMethod != null;
                 IsStatic = pi.GetMethod.IsStatic;
             }
-            InitializeAccessor();
-            InitializeStructAccessor();
+            if (!DeclaringType.IsGenericMeta)
+            {
+                InitializeAccessor();
+                InitializeStructAccessor();
+            }
         }
 
         /// <summary>
@@ -421,7 +420,6 @@ namespace Galador.Reflection.Utils
         public MemberInfo Member { get; }
 
         // performance fields, depends on platform
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
         Action<object, object> setter;
         Func<object, object> getter;
         Action<object, Guid> setterGuid;
@@ -452,13 +450,11 @@ namespace Galador.Reflection.Utils
         Func<object, float> getterSingle;
         Func<object, double> getterDouble;
         Func<object, decimal> getterDecimal;
-#endif
         PropertyInfo pInfo;
         FieldInfo fInfo;
 
         #region InitializeStructAccessor() InitializeAccessor()
 
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
         void InitializeStructAccessor()
         {
             if (!EmitHelper.SupportsEmit)
@@ -545,18 +541,12 @@ namespace Galador.Reflection.Utils
                 setter = EmitHelper.CreateFieldSetter<T>(pi);
             }
         }
-#else
-        void InitializeStructAccessor()
-        {
-        }
-#endif
 
         void InitializeAccessor()
         {
             if (Member is PropertyInfo)
             {
                 pInfo = (PropertyInfo)Member;
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
                 if (EmitHelper.SupportsEmit)
                 {
                     getter = EmitHelper.CreatePropertyGetterHandler(pInfo);
@@ -565,12 +555,10 @@ namespace Galador.Reflection.Utils
                         setter = EmitHelper.CreatePropertySetterHandler(pInfo);
                     }
                 }
-#endif
             }
             else
             {
                 fInfo = (FieldInfo)Member;
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
                 if (fInfo.IsLiteral)
                 {
                     var value = fInfo.GetValue(null);
@@ -584,13 +572,12 @@ namespace Galador.Reflection.Utils
                         setter = EmitHelper.CreateFieldSetterHandler(fInfo);
                     }
                 }
-#endif
             }
         }
 
-#endregion
+        #endregion
 
-#region public: GetValue() SetValue()
+        #region public: GetValue() SetValue()
 
         /// <summary>
         /// Gets the value of this member for the given instance.
@@ -608,10 +595,8 @@ namespace Galador.Reflection.Utils
                 if (instance == null)
                     return null;
             }
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (getter != null)
                 return getter(instance);
-#endif
             if (pInfo != null && pInfo.GetMethod != null)
                 return pInfo.GetValue(instance);
             if (fInfo != null)
@@ -640,13 +625,12 @@ namespace Galador.Reflection.Utils
                     return false;
             }
 
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (setter != null)
             {
                 setter(instance, value);
                 return true;
             }
-#endif
+
             if (pInfo != null && pInfo.SetMethod != null)
             {
                 pInfo.SetValue(instance, value);
@@ -664,7 +648,6 @@ namespace Galador.Reflection.Utils
 
         #region typed known structs: Get/Set Guid/Bool/Char/...()
 
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool FastSet<T>(object instance, T value, Action<object, T> setter)
         {
@@ -681,278 +664,222 @@ namespace Galador.Reflection.Utils
             if (getter != null) { return getter(instance); }
             else { return default(T); }
         }
-#endif
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static T As<T>(object value) { return value is T ? (T)value : default(T); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetGuid(object instance, Guid value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<Guid>(instance, value, setterGuid);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Guid GetGuid(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<Guid>(instance, getterGuid);
-#endif
             return As<Guid>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetBool(object instance, bool value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<bool>(instance, value, setterBool);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool GetBool(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<bool>(instance, getterBool);
-#endif
             return As<bool>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetChar(object instance, char value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<char>(instance, value, setterChar);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public char GetChar(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<char>(instance, getterChar);
-#endif
             return As<char>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetInt8(object instance, byte value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<byte>(instance, value, setterByte);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public byte GetInt8(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<byte>(instance, getterByte);
-#endif
             return As<byte>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetUInt8(object instance, sbyte value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<sbyte>(instance, value, setterSByte);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public sbyte GetUInt8(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<sbyte>(instance, getterSByte);
-#endif
             return As<sbyte>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetInt16(object instance, short value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<short>(instance, value, setterInt16);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public short GetInt16(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<short>(instance, getterInt16);
-#endif
             return As<short>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetUInt16(object instance, ushort value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<ushort>(instance, value, setterUInt16);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ushort GetUInt16(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<ushort>(instance, getterUInt16);
-#endif
             return As<ushort>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetInt32(object instance, int value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<int>(instance, value, setterInt32);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetInt32(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<int>(instance, getterInt32);
-#endif
             return As<int>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetUInt32(object instance, uint value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<uint>(instance, value, setterUInt32);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public uint GetUInt32(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<uint>(instance, getterUInt32);
-#endif
             return As<uint>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetInt64(object instance, long value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<long>(instance, value, setterInt64);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public long GetInt64(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<long>(instance, getterInt64);
-#endif
             return As<long>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetUInt64(object instance, ulong value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<ulong>(instance, value, setterUInt64);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ulong GetUInt64(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<ulong>(instance, getterUInt64);
-#endif
             return As<ulong>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetSingle(object instance, float value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<float>(instance, value, setterSingle);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float GetSingle(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<float>(instance, getterSingle);
-#endif
             return As<float>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetDouble(object instance, double value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<double>(instance, value, setterDouble);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double GetDouble(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<double>(instance, getterDouble);
-#endif
             return As<double>(GetValue(instance));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool SetDecimal(object instance, decimal value)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastSet<decimal>(instance, value, setterDecimal);
-#endif
             return SetValue(instance, value);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public decimal GetDecimal(object instance)
         {
-#if NET472 || NETCOREAPP2_1 || NETSTANDARD2_1
             if (EmitHelper.SupportsEmit)
                 return FastGet<decimal>(instance, getterDecimal);
-#endif
             return As<decimal>(GetValue(instance));
         }
 
-#endregion
+        #endregion
     }
 
-#endregion
+    #endregion
 }

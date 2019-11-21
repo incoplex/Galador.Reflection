@@ -86,6 +86,7 @@ namespace TestAndroid
                 }
                 else if (!item.IsHeader)
                 {
+                    System.Console.WriteLine($"UnitTest: {item.TestMethod.DeclaringType.Name}.{item.TestMethod.Name}");
                     try
                     {
                         item.TestMethod.Invoke(target, Array.Empty<object>());

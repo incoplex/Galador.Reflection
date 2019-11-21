@@ -5,7 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 
-#if NET472
+#if NET47
 using System.Configuration;
 #endif
 
@@ -15,7 +15,7 @@ namespace Galador.Reflection
     {
         static Log()
         {
-#if NET472
+#if NET47
             var prefix = "Log::";
             var allkeys = ConfigurationManager.AppSettings.AllKeys.Where(x => x.StartsWith(prefix));
             foreach (var key in allkeys)
